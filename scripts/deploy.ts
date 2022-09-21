@@ -1,18 +1,44 @@
-import { ethers } from "hardhat";
+import { ethers, run, network } from "hardhat";
 
 async function main() {
-  const currentTimestampInSeconds = Math.round(Date.now() / 1000);
-  const ONE_YEAR_IN_SECS = 365 * 24 * 60 * 60;
-  const unlockTime = currentTimestampInSeconds + ONE_YEAR_IN_SECS;
+  const SimpleStorageFactory = await ethers.getContractFactory("SimpleStorage");
+  console.log("Deploying contract...");
+  const simpleStorage = await SimpleStorageFactory.deploy();
+  await simpleStorage.deployed();
+  console.log(`Deployed contract to: ${simpleStorage.address}`);
+  // what happens when we deploy to our hardhat network?
+  console.log("chainId..........", network.config.chainId);
+  if (network.config.chainId === 5 && process.env.ETHERSCAN_API_KEY) {
+    console.log("Waiting for block confirmations...");
+    await simpleStorage.deployTransaction.wait(6);
+    await verify(simpleStorage.address, []);
+  }
 
-  const lockedAmount = ethers.utils.parseEther("1");
+  const currentValue = await simpleStorage.retrieve();
+  console.log(`Current Value is: ${currentValue}`);
 
-  const Lock = await ethers.getContractFactory("Lock");
-  const lock = await Lock.deploy(unlockTime, { value: lockedAmount });
+  // Update the current value
+  const transactionResponse = await simpleStorage.store(7);
+  await transactionResponse.wait(1);
+  const updatedValue = await simpleStorage.retrieve();
+  console.log(`Updated Value is: ${updatedValue}`);
+}
 
-  await lock.deployed();
-
-  console.log(`Lock with 1 ETH and unlock timestamp ${unlockTime} deployed to ${lock.address}`);
+// async function verify(contractAddress, args) {
+async function verify(contractAddress: string, args: any[]) {
+  console.log("Verifying contract...");
+  try {
+    await run("verify:verify", {
+      address: contractAddress,
+      constructorArguments: args,
+    });
+  } catch (e: any) {
+    if (e.message.toLowerCase().includes("already verified")) {
+      console.log("Already Verified!");
+    } else {
+      console.log(e);
+    }
+  }
 }
 
 // We recommend this pattern to be able to use async/await everywhere
